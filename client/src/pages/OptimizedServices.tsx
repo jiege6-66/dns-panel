@@ -28,11 +28,11 @@ const emptyInput = (): OptimizedInput => ({ name: '', dnsCredentialId: 0, zoneId
 const modeCopy = {
   DEFAULT: {
     label: '默认模式',
-    description: '按 Cloudflare 的常规方式接入，访问域名直接交给 Tunnel，再转发到你的服务。第一次使用或不确定怎么选时，建议用这个。',
+    description: '按 Cloudflare 的常规方式接入（通常是橙云代理），访问域名交给 Tunnel，再转发到你的服务。第一次使用或不确定怎么选时，建议用这个。',
   },
   PREFERRED: {
     label: '优选模式',
-    description: '让访问域名先走你指定的“优选目标域名”（preferredTarget），再由 Cloudflare 转到 Tunnel 和你的服务。适合已经准备好优选域名的情况。',
+    description: '让访问域名先走你指定的“优选目标域名”（preferredTarget），再由 Cloudflare 转到 Tunnel 和你的服务。此模式使用 DNS only（灰云），适合已经准备好优选域名的情况。',
   },
 } as const;
 
@@ -111,7 +111,7 @@ function CreateOptimizedServiceDialog({ open, onClose, onSaved, initial }: { ope
         {input.mode === 'PREFERRED' && <TextField label="优选目标域名（preferredTarget）" placeholder="cdn.example.net" helperText="填写你准备使用的优选 CNAME 域名，例如 cdn.example.net；不能填写 IP 地址。系统会先检查它是否指向 Cloudflare。" value={input.preferredTarget || ''} onChange={e => set('preferredTarget', e.target.value)} required />}
         <Box>
           <FormControlLabel control={<Switch checked={!!input.intermediateEnabled} onChange={e => set('intermediateEnabled', e.target.checked)} />} label="增加一层中间 CNAME（可选）" />
-          <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 1 }}>中间 CNAME 就是你自己域名下的一个 DNS 别名。打开后会变成“访问域名 → 中间域名 → 优选目标”，以后更换优选目标时只改中间记录，访问域名不用改。第一次使用通常保持关闭。</Typography>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ ml: 1 }}>中间 CNAME 就是你自己域名下的一个 DNS 别名。只有“优选模式”会使用它；默认模式会忽略这一项。打开后会变成“访问域名 → 中间域名 → 优选目标”，以后更换优选目标时只改中间记录，访问域名不用改。第一次使用通常保持关闭。</Typography>
         </Box>
         {input.intermediateEnabled && <TextField label="中间域名（DNS 别名）" placeholder="optimized.example.com" helperText="填写同一域名区域下、尚未使用的域名；它不是服务器地址，只是转发到优选目标的别名。" value={input.intermediateHostname || ''} onChange={e => set('intermediateHostname', e.target.value)} required />}
         <TextField label="健康检查路径" placeholder="/" helperText="系统会用 HTTPS 访问“访问域名 + 此路径”来判断服务是否正常，默认使用 /。" value={input.healthCheckPath || '/'} onChange={e => set('healthCheckPath', e.target.value)} />
