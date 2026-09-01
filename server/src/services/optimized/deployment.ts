@@ -473,17 +473,27 @@ export class OptimizedDeploymentService {
       if (beforeTunnelDns && normalizeHostname(beforeTunnelDns.content) !== normalizeHostname(tunnelTarget) && !confirmed.has('DNS_CONFLICT')) {
         throw new ConfirmationRequiredError('DNS_CONFLICT', { records: businessRecords, requested: tunnelTarget }, '业务 hostname 已指向其他目标');
       }
-      await context.cfService.upsertTunnelCnameRecord(service.zoneId, service.hostname, tunnelId);
+      const businessDns = await context.cfService.upsertTunnelCnameRecord(service.zoneId, service.hostname, tunnelId);
+      if (businessDns.action === 'created') {
+        const created = (await context.cfService.getDNSRecords(service.zoneId)).find((record: any) => normalizeHostname(record.name) === service.hostname && String(record.type).toUpperCase() === 'CNAME');
+        if (created?.id) managed.dnsRecordIds = [...new Set([...(managed.dnsRecordIds || []), created.id])];
+      }
       await this.appendLog(jobId, { step: 'TUNNEL_READY', message: 'Tunnel ingress 与业务 CNAME 已就绪' });
 
       const fallbackHostname = `fallback.${service.zoneName}`;
+      await tunnelService.ensureIngress({ accountId: context.accountId, tunnelId, hostname: fallbackHostname, service: service.serviceUrl });
       if (!fallback.origin) {
-        await context.cfService.upsertTunnelCnameRecord(service.zoneId, fallbackHostname, tunnelId);
+        const fallbackDns = await context.cfService.upsertTunnelCnameRecord(service.zoneId, fallbackHostname, tunnelId);
+        if (fallbackDns.action === 'created') {
+          const created = (await context.cfService.getDNSRecords(service.zoneId)).find((record: any) => normalizeHostname(record.name) === fallbackHostname && String(record.type).toUpperCase() === 'CNAME');
+          if (created?.id) managed.dnsRecordIds = [...new Set([...(managed.dnsRecordIds || []), created.id])];
+        }
         await context.cfService.updateFallbackOrigin(service.zoneId, fallbackHostname);
       } else if (normalizeHostname(fallback.origin) !== fallbackHostname && fallback.origin !== service.hostname) {
         if (!confirmed.has('FALLBACK_ORIGIN_CONFLICT')) throw new ConfirmationRequiredError('FALLBACK_ORIGIN_CONFLICT', { existing: fallback.origin, requested: fallbackHostname }, 'Zone 已存在不同 Fallback Origin');
         await context.cfService.updateFallbackOrigin(service.zoneId, fallbackHostname);
       }
+      await prisma.optimizedService.update({ where: { id: service.id }, data: { managedResourcesJson: safeJson(managed) } });
       const fallbackDeadline = Date.now() + Number(process.env.OPTIMIZED_FALLBACK_TIMEOUT_MS || 300_000);
       let fallbackStatus = await context.cfService.getFallbackOriginDetails(service.zoneId);
       while (fallbackStatus.status !== 'active' && Date.now() < fallbackDeadline) {
@@ -568,7 +578,8 @@ export class OptimizedDeploymentService {
       if (snapshot) {
         try {
           const context = await this.credentials.getCloudflareContext(service.userId, service.dnsCredentialId);
-          const result = await this.rollback.restore(service, context.cfService, context.accountId, snapshot);
+          const latestService = await prisma.optimizedService.findUnique({ where: { id: service.id } }) || service;
+          const result = await this.rollback.restore(latestService, context.cfService, context.accountId, snapshot);
           await prisma.optimizedDeployment.update({ where: { id: jobId }, data: { status: result.failures.length ? 'ROLLBACK_FAILED' : 'ROLLED_BACK', currentStep: result.failures.length ? 'ROLLBACK_FAILED' : 'ROLLED_BACK', resultJson: safeJson(result), errorCode: result.failures.length ? 'ROLLBACK_FAILED' : details.code } }).catch(() => undefined);
           await prisma.optimizedService.update({ where: { id: service.id }, data: { deploymentStatus: result.failures.length ? 'ROLLBACK_FAILED' : 'ROLLED_BACK', currentStep: result.failures.length ? 'ROLLBACK_FAILED' : 'ROLLED_BACK' } }).catch(() => undefined);
         } catch (rollbackError: any) {

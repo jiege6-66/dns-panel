@@ -28,5 +28,15 @@ while :; do
     cloudflared --no-autoupdate tunnel run --token-file "$token_file" >>"$logfile" 2>&1 &
     echo $! >"$pidfile"
   done
+  for pidfile in "$runtime_dir"/*.pid; do
+    [ -f "$pidfile" ] || continue
+    token_file="/tokens/$(basename "$pidfile" .pid).token"
+    if [ ! -f "$token_file" ]; then
+      kill "$(cat "$pidfile")" 2>/dev/null || true
+      rm -f "$pidfile"
+      continue
+    fi
+    kill -0 "$(cat "$pidfile")" 2>/dev/null || rm -f "$pidfile"
+  done
   sleep 5
 done
