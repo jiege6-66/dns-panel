@@ -33,7 +33,8 @@ import {
   Settings as SettingsIcon,
   Dashboard as DashboardIcon,
   History as HistoryIcon,
-  WorkspacePremium as CertificateIcon
+  WorkspacePremium as CertificateIcon,
+  Speed as OptimizedIcon
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProvider } from '@/contexts/ProviderContext';
@@ -252,6 +253,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
     [providerOrder, sidebarProviders]
   );
   const isCertificatesRoute = location.pathname.startsWith('/certificates');
+  const isOptimizedRoute = location.pathname.startsWith('/optimized-services');
   const isDashboardRoute = location.pathname === '/';
 
   if (isLoading) {
@@ -416,6 +418,29 @@ export default function Sidebar({ onClose }: SidebarProps) {
                       
                             
                       
+                                        </Box>
+
+                                        <Box sx={{ px: 2, mt: 0.5, mb: 0.5 }}>
+                                          <ListItemButton
+                                            onClick={() => {
+                                              selectProvider(null);
+                                              navigate('/optimized-services');
+                                              if (onClose) onClose();
+                                            }}
+                                            sx={{
+                                              py: 0.8,
+                                              px: 2,
+                                              borderRadius: '12px',
+                                              bgcolor: isOptimizedRoute ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                              color: isOptimizedRoute ? 'white' : 'rgba(255,255,255,0.7)',
+                                              '&:hover': { bgcolor: isOptimizedRoute ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)', color: 'white' },
+                                            }}
+                                          >
+                                            <Box sx={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', mr: 2 }}>
+                                              <OptimizedIcon fontSize="small" sx={{ fontSize: 20 }} />
+                                            </Box>
+                                            <ListItemText primary="优选服务" primaryTypographyProps={{ variant: 'body2', fontWeight: 500, fontSize: '1rem' }} />
+                                          </ListItemButton>
                                         </Box>
 
                                         <Box sx={{ px: 2, mt: 0.5, mb: 0.5 }}>

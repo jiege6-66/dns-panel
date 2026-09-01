@@ -11,6 +11,7 @@ import Tunnels from './pages/Tunnels';
 import Logs from './pages/Logs';
 import Settings from './pages/Settings';
 import Certificates from './pages/Certificates';
+import OptimizedServices from './pages/OptimizedServices';
 
 import { BreadcrumbProvider } from './contexts/BreadcrumbContext';
 
@@ -55,6 +56,7 @@ function App() {
         <Route path="logs" element={<Logs />} />
         <Route path="settings" element={<Settings />} />
         <Route path="certificates" element={<Certificates />} />
+        <Route path="optimized-services" element={<OptimizedServices />} />
       </Route>
 
       {/* 404 重定向 */}

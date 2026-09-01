@@ -26,6 +26,7 @@ const breadcrumbNameMap: Record<string, string> = {
   logs: '操作日志',
   settings: '设置',
   tunnels: 'Tunnels',
+  'optimized-services': '优选服务',
 };
 
 export default function Layout() {
