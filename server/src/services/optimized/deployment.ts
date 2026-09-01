@@ -136,7 +136,14 @@ export class OptimizedDeploymentService {
       try {
         tunnelConfig = extractTunnelConfig(await context.cfService.getTunnelConfig(context.accountId, input.tunnelId));
         checks.push({ name: 'Tunnel', ok: !!tunnelConfig, message: tunnelConfig ? 'Tunnel 可访问' : 'Tunnel 配置无法解析' });
-      } catch (error: any) { checks.push({ name: 'Tunnel', ok: false, message: error?.message || String(error) }); }
+      } catch (error: any) {
+        const status = Number(error?.status || error?.statusCode || 0);
+        if (status === 404 || /configuration for tunnel not found/i.test(String(error?.message || ''))) {
+          checks.push({ name: 'Tunnel', ok: true, message: 'Tunnel 尚无 ingress 配置，部署时初始化' });
+        } else {
+          checks.push({ name: 'Tunnel', ok: false, message: error?.message || String(error) });
+        }
+      }
     } else checks.push({ name: 'Tunnel', ok: true, message: '部署时创建同账户共享 Tunnel' });
     const fallback = await context.cfService.getFallbackOriginDetails(input.zoneId).catch((error: any) => ({ origin: null, status: 'ERROR', errors: [{ message: error?.message || String(error) }] }));
     checks.push({ name: 'Fallback Origin', ok: fallback.status !== 'ERROR', message: fallback.origin ? `已配置：${fallback.origin}` : '未配置，部署时初始化' });
