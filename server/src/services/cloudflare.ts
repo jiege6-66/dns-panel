@@ -189,7 +189,7 @@ export class CloudflareService {
         lastError = error;
         const status = Number(error?.status || error?.statusCode || 0);
         if (status === 404 && options.allow404) return null;
-        if (![408, 429, 500, 502, 503, 504].includes(status) && !error?.code) break;
+        if (![408, 429, 500, 502, 503, 504].includes(status) && !error?.code && !(error instanceof TypeError)) break;
         if (attempt >= retries) break;
         const retryAfterMs = Number(error?.retryAfter || 0) * 1000;
         await new Promise(resolve => setTimeout(resolve, retryAfterMs || Math.min(250 * 2 ** attempt, 4000)));

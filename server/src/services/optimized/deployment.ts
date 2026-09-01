@@ -181,14 +181,11 @@ export class OptimizedDeploymentService {
 
   async enqueue(userId: number, serviceId: number, operation: OptimizedOperation, idempotencyKey?: string, metadata?: any): Promise<any> {
     const service = await this.get(userId, serviceId);
-    const lockToken = await this.acquireLock(userId, service.id);
     const key = String(idempotencyKey || `${operation}:${service.id}:${service.updatedAt.toISOString()}`);
+    const existing = await prisma.optimizedDeployment.findUnique({ where: { idempotencyKey: key } });
+    if (existing) return existing;
+    const lockToken = await this.acquireLock(userId, service.id);
     try {
-      const existing = await prisma.optimizedDeployment.findUnique({ where: { idempotencyKey: key } });
-      if (existing) {
-        await prisma.optimizedService.update({ where: { id: service.id }, data: { lockToken: null, lockExpiresAt: null } });
-        return existing;
-      }
       const job = await prisma.optimizedDeployment.create({ data: { userId, serviceId, operation, idempotencyKey: key, status: 'QUEUED', heartbeatAt: new Date(), currentStep: 'DRAFT', resultJson: metadata ? safeJson(metadata) : undefined } });
       void this.run(job.id, lockToken).catch(() => undefined);
       return job;
@@ -321,6 +318,11 @@ export class OptimizedDeploymentService {
       const jobResult = parseJson<any>(job.resultJson, {});
       const confirmed = new Set<string>(jobResult.confirmed || []);
       const context = await this.credentials.getCloudflareContext(service.userId, service.dnsCredentialId);
+      if (job.operation === 'DELETE' && !service.tunnelId) {
+        await prisma.optimizedService.update({ where: { id: service.id }, data: { deploymentStatus: 'DELETED', currentStep: 'DELETED', healthStatus: 'UNKNOWN', lockToken: null, lockExpiresAt: null } });
+        await prisma.optimizedDeployment.update({ where: { id: jobId }, data: { status: 'SUCCEEDED', currentStep: 'DELETED', resultJson: safeJson({ deleteMode: jobResult.deleteMode || 'restore', cleaned: false }), heartbeatAt: new Date() } });
+        return;
+      }
       const records = await context.cfService.getDNSRecords(service.zoneId);
       const managedNames = [service.hostname, service.intermediateHostname].filter(Boolean).map(normalizeHostname);
       const businessRecords = records.filter((record: any) => managedNames.includes(normalizeHostname(record.name)));
@@ -471,6 +473,10 @@ export class OptimizedDeploymentService {
         const latestCustom = await context.cfService.getCustomHostname(service.zoneId, customHostnameId);
         if (latestCustom?.status === 'active' && latestCustom?.ssl?.status === 'active') break;
         await new Promise(resolve => setTimeout(resolve, Number(process.env.OPTIMIZED_POLL_INTERVAL_MS || 10_000)));
+      }
+      const finalCustom = await context.cfService.getCustomHostname(service.zoneId, customHostnameId);
+      if (finalCustom?.status !== 'active' || finalCustom?.ssl?.status !== 'active') {
+        throw Object.assign(new Error('切换后 Custom Hostname 或 SSL 未达到 active'), { code: 'HOSTNAME_ACTIVATION_TIMEOUT', status: 504 });
       }
       const health = await this.health.checkSavedHostname(service.hostname, service.healthCheckPath);
       if (!health.ok) throw Object.assign(new Error(health.error || 'HTTPS 健康检查失败'), { code: 'HTTPS_HEALTH_CHECK_FAILED', status: 502 });
