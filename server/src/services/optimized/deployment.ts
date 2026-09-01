@@ -326,7 +326,11 @@ export class OptimizedDeploymentService {
       const records = await context.cfService.getDNSRecords(service.zoneId);
       const managedNames = [service.hostname, service.intermediateHostname].filter(Boolean).map(normalizeHostname);
       const businessRecords = records.filter((record: any) => managedNames.includes(normalizeHostname(record.name)));
-      const tunnelConfig = service.tunnelId ? extractTunnelConfig(await context.cfService.getTunnelConfig(context.accountId, service.tunnelId)) : undefined;
+      let tunnelConfig: any;
+      if (service.tunnelId) {
+        try { tunnelConfig = extractTunnelConfig(await context.cfService.getTunnelConfig(context.accountId, service.tunnelId)); }
+        catch (error: any) { if (Number(error?.status || error?.statusCode) !== 404) throw error; }
+      }
       const fallback = await context.cfService.getFallbackOriginDetails(service.zoneId);
       const custom = service.customHostnameId ? await context.cfService.getCustomHostname(service.zoneId, service.customHostnameId) : null;
       snapshot = { version: 1, capturedAt: new Date().toISOString(), dns: businessRecords.map((record: any) => ({ id: record.id, type: record.type, name: record.name, content: record.content, ttl: record.ttl, proxied: record.proxied })), tunnel: tunnelConfig ? { id: service.tunnelId || undefined, accountId: context.accountId, config: tunnelConfig } : undefined, fallbackOrigin: fallback, customHostname: { id: service.customHostnameId || undefined, existed: !!custom, hostnameStatus: custom?.status, sslStatus: custom?.ssl?.status }, validationRecordIds: [] };
@@ -344,8 +348,22 @@ export class OptimizedDeploymentService {
         tunnelName = tunnel.name;
         managed.tunnelCreated = true;
         await prisma.optimizedService.update({ where: { id: service.id }, data: { tunnelId, tunnelName, managedResourcesJson: safeJson(managed) } });
+        // A newly-created remotely-managed Tunnel has no configuration until
+        // the first PUT. Seed a valid ingress now so the continuation task can
+        // read it even before a connector comes online.
+        await context.cfService.updateTunnelConfig(context.accountId, tunnelId, {
+          ingress: [
+            { hostname: service.hostname, service: service.serviceUrl },
+            { service: 'http_status:404' },
+          ],
+        });
         await prisma.optimizedDeployment.update({ where: { id: jobId }, data: { status: 'WAITING_CONFIRMATION', currentStep: 'WAITING_CONFIRMATION', pendingConfirmationJson: safeJson({ kind: 'TUNNEL_CONNECTION_REQUIRED', tunnelId, message: '请先启动新 Tunnel Connector，再继续部署' }) } });
+        await prisma.optimizedService.update({ where: { id: service.id }, data: { deploymentStatus: 'WAITING_CONFIRMATION', currentStep: 'WAITING_CONFIRMATION', lastError: '请先启动新 Tunnel Connector，再继续部署' } });
         return;
+      }
+      const selectedTunnel = await context.cfService.getTunnel(context.accountId, tunnelId).catch(() => null);
+      if (!selectedTunnel || !Array.isArray(selectedTunnel.connections) || selectedTunnel.connections.length === 0) {
+        throw new ConfirmationRequiredError('TUNNEL_CONNECTION_REQUIRED', { tunnelId, message: 'Tunnel 尚未连接，请启动 cloudflared Connector 后再继续' }, 'Tunnel 尚未连接');
       }
       if (zoneConfig?.tunnelId && zoneConfig.tunnelId !== tunnelId && !confirmed.has('ZONE_TUNNEL_CONFLICT')) {
         throw new ConfirmationRequiredError('ZONE_TUNNEL_CONFLICT', { existingTunnelId: zoneConfig.tunnelId, requestedTunnelId: tunnelId }, '同一 Zone 已绑定另一个共享 Tunnel');

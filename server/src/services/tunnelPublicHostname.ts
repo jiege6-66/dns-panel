@@ -29,7 +29,13 @@ export class TunnelPublicHostnameService {
     service: string;
     path?: string;
   }): Promise<{ config: any; previousConfig: any; action: 'created' | 'updated' | 'unchanged' }> {
-    const raw = await this.cloudflare.getTunnelConfig(input.accountId, input.tunnelId);
+    let raw: any;
+    try {
+      raw = await this.cloudflare.getTunnelConfig(input.accountId, input.tunnelId);
+    } catch (error: any) {
+      if (Number(error?.status || error?.statusCode) !== 404) throw error;
+      raw = { config: { ingress: [{ service: 'http_status:404' }] } };
+    }
     const config = extractTunnelConfig(raw);
     if (!config) throw Object.assign(new Error('Tunnel 配置解析失败'), { status: 502, code: 'CLOUDFLARE_ERROR' });
     const previousConfig = JSON.parse(JSON.stringify(config));
@@ -61,7 +67,13 @@ export class TunnelPublicHostnameService {
   }
 
   async removeIngress(input: { accountId: string; tunnelId: string; hostname: string; path?: string }): Promise<{ config: any; removed: boolean }> {
-    const raw = await this.cloudflare.getTunnelConfig(input.accountId, input.tunnelId);
+    let raw: any;
+    try {
+      raw = await this.cloudflare.getTunnelConfig(input.accountId, input.tunnelId);
+    } catch (error: any) {
+      if (Number(error?.status || error?.statusCode) !== 404) throw error;
+      return { config: { ingress: [{ service: 'http_status:404' }] }, removed: false };
+    }
     const config = extractTunnelConfig(raw);
     if (!config) throw Object.assign(new Error('Tunnel 配置解析失败'), { status: 502 });
     const hostname = normalizeHostname(input.hostname);

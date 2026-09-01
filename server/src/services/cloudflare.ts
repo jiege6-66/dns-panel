@@ -847,6 +847,18 @@ export class CloudflareService {
     }
   }
 
+  /** 获取单个 Tunnel 详情（连接状态通常只在详情接口返回）。 */
+  async getTunnel(accountId: string, tunnelId: string): Promise<any | null> {
+    try {
+      const result = await (this.client as any).zeroTrust.tunnels.get(tunnelId, { account_id: accountId });
+      return result;
+    } catch (error: any) {
+      const status = Number(error?.status || error?.statusCode || 0);
+      if (status === 404) return null;
+      this.buildTunnelError('获取 Tunnel 详情', error);
+    }
+  }
+
   /**
    * 创建 Tunnel（Account 级别）
    */
