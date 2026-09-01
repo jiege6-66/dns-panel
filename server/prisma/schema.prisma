@@ -336,3 +336,85 @@ model DomainExpiryOverride {
   @@index([userId])
   @@map("domain_expiry_overrides")
 }
+
+/// Zone-scoped resources shared by optimized services. Secrets remain in the
+/// encrypted credential store and are intentionally not copied here.
+model CloudflareOptimizedZoneConfig {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  dnsCredentialId  Int
+  accountId        String
+  zoneId           String
+  zoneName         String
+  fallbackHostname String
+  fallbackStatus   String   @default("UNKNOWN")
+  tunnelId         String?
+  tunnelName       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, dnsCredentialId, zoneId])
+  @@index([userId])
+  @@index([zoneId])
+  @@map("cloudflare_optimized_zone_configs")
+}
+
+model OptimizedService {
+  id                   Int       @id @default(autoincrement())
+  userId               Int
+  name                 String
+  hostname             String
+  serviceUrl           String
+  dnsCredentialId      Int
+  accountId            String
+  zoneId               String
+  zoneName             String
+  tunnelId             String?
+  tunnelName           String?
+  mode                 String    @default("DEFAULT")
+  preferredTarget      String?
+  intermediateEnabled  Boolean   @default(false)
+  intermediateHostname String?
+  customHostnameId     String?
+  deploymentStatus     String    @default("DRAFT")
+  currentStep          String?
+  healthStatus         String    @default("UNKNOWN")
+  healthCheckPath      String    @default("/")
+  lastError            String?
+  lastHealthCheckAt    DateTime?
+  managedResourcesJson String?
+  lockToken            String?
+  lockExpiresAt        DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@unique([userId, dnsCredentialId, hostname])
+  @@index([userId])
+  @@index([zoneId])
+  @@index([deploymentStatus])
+  @@map("optimized_services")
+}
+
+model OptimizedDeployment {
+  id                      Int       @id @default(autoincrement())
+  userId                  Int
+  serviceId               Int
+  operation               String
+  status                  String    @default("QUEUED")
+  currentStep             String    @default("DRAFT")
+  heartbeatAt             DateTime?
+  errorCode               String?
+  errorMessage            String?
+  snapshotJson            String?
+  resultJson              String?
+  stepLogJson             String?
+  pendingConfirmationJson String?
+  idempotencyKey          String    @unique
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([serviceId])
+  @@index([status, heartbeatAt])
+  @@map("optimized_deployments")
+}
