@@ -150,6 +150,7 @@
 | 🔐 通用证书中心 | ACME 账户管理、证书订单管理、DNS-01 自动验证、自动续期、Webhook / Dokploy / 1Panel / NPM 等部署目标、证书下载 |
 | ☁️ Cloudflare 增强 | 自定义主机名、证书状态、Fallback Origin |
 | 🚇 Cloudflare Tunnels | 隧道管理、路由配置（公网主机名 / CIDR / 主机名路由） |
+| ⚡ Cloudflare 优选服务 | 同 Zone Tunnel + Custom Hostname 一键部署、切换、健康检查与回滚 |
 | 🛡️ 阿里云 ESA | 边缘安全加速站点管理、DNS 记录、免费证书申请/续签 |
 | 🔑 多用户隔离 | JWT 登录、账户与凭证隔离 |
 | 🔒 安全存储 | DNS 凭证加密存储（AES-256） |
@@ -171,6 +172,40 @@
 | DNS 清理 | 删除 Tunnel 时可选同时清理指向该 Tunnel 的 DNS CNAME 记录 |
 
 > ⚠️ Tunnels 功能需要 Cloudflare API Token 具备 **Account: Cloudflare Tunnel（编辑）** 和 **Zone: DNS（编辑）** 权限。
+
+### ⚡ Cloudflare 优选服务
+
+“优选服务”使用异步工作流配置同 Zone 的 Tunnel、Fallback Origin、Custom Hostname、动态 DCV 记录和 DNS-only preferred target。部署请求立即返回任务 ID，页面会持续展示当前步骤、hostname/SSL 独立状态、HTTPS 健康状态和详细日志。
+
+主要安全约束：
+
+- preferred target 必须经过完整 CNAME 链、最终 A/AAAA、私网/保留地址和 Cloudflare 官方 IP 段检查。
+- HTTPS 预检始终使用业务 hostname 作为 SNI 与 Host，不允许由请求指定任意健康检查 host。
+- DNS、Ingress、Fallback Origin 或动态 DCV 冲突不会静默覆盖，任务进入“待确认”。
+- Snapshot 和步骤日志禁止保存 API Token、Tunnel Token、JWT、Cookie、私钥或加密密钥。
+- 回滚只清理本次工作流创建的资源；Zone 级 Fallback Origin 仅在最后一个服务且用户明确要求时清理。
+
+Cloudflare Token 需要：Zone Read、DNS Read/Write、Account Cloudflare Tunnel Read/Write、SSL and Certificates Read/Write。Cloudflare for SaaS、Fallback Origin 和证书能力仍受账户套餐限制。
+
+#### SQLite 升级
+
+本项目继续使用 `prisma db push`，升级前必须先停止写入并备份 SQLite：
+
+```bash
+cd server
+cp prisma/database.db "prisma/database.db.backup-$(date +%Y%m%d-%H%M%S)"
+npx prisma db push
+```
+
+升级后检查新增表且既有数据量未变化：
+
+```bash
+sqlite3 prisma/database.db ".tables"
+sqlite3 prisma/database.db "PRAGMA integrity_check;"
+sqlite3 prisma/database.db "SELECT count(*) FROM users; SELECT count(*) FROM dns_credentials;"
+```
+
+应看到 `cloudflare_optimized_zone_configs`、`optimized_services` 和 `optimized_deployments`；`PRAGMA integrity_check` 应返回 `ok`。Docker 部署启动时仍会自动运行 `prisma db push`，但不能替代升级前备份。
 
 ---
 
