@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { chmod, mkdir, writeFile } from 'fs/promises';
+import { chmod, mkdir, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { CloudflareService } from '../cloudflare';
@@ -39,6 +39,12 @@ export class OptimizedDeploymentService {
     const target = path.join(directory, `${tunnelId}.token`);
     await writeFile(target, `${token.trim()}\n`, { encoding: 'utf8', mode: 0o600 });
     await chmod(target, 0o600);
+  }
+
+  private async removeConnectorToken(tunnelId: string): Promise<void> {
+    const directory = String(process.env.OPTIMIZED_TUNNEL_TOKEN_DIR || '').trim();
+    if (!directory || !tunnelId) return;
+    await unlink(path.join(directory, `${tunnelId}.token`)).catch(() => undefined);
   }
 
   async list(userId: number): Promise<any[]> {
@@ -265,22 +271,29 @@ export class OptimizedDeploymentService {
   async provisionPendingConnectors(): Promise<number> {
     if (!String(process.env.OPTIMIZED_TUNNEL_TOKEN_DIR || '').trim()) return 0;
     const services = await prisma.optimizedService.findMany({
-      where: { deploymentStatus: 'WAITING_CONFIRMATION', tunnelId: { not: null } },
+      where: { deploymentStatus: 'WAITING_CONFIRMATION' },
     });
     let provisioned = 0;
     for (const service of services) {
       try {
+        const deployment = await prisma.optimizedDeployment.findFirst({
+          where: { serviceId: service.id, userId: service.userId, status: 'WAITING_CONFIRMATION' },
+          orderBy: { createdAt: 'desc' },
+        });
+        const pending = parseJson<any>(deployment?.pendingConfirmationJson, {});
+        if (!deployment || pending.kind !== 'TUNNEL_CONNECTION_REQUIRED' || !pending.tunnelId) continue;
         const context = await this.credentials.getCloudflareContext(service.userId, service.dnsCredentialId);
-        const token = await context.cfService.getTunnelToken(context.accountId, service.tunnelId!);
-        await this.provisionConnectorToken(service.tunnelId!, token);
+        const tunnelId = String(pending.tunnelId);
+        const tunnel = await context.cfService.getTunnel(context.accountId, tunnelId);
+        if (!tunnel || tunnel.deleted_at) {
+          await this.removeConnectorToken(tunnelId);
+          if (!service.tunnelId) await this.continue(service.userId, deployment.id, 'replace');
+          continue;
+        }
+        const token = await context.cfService.getTunnelToken(context.accountId, tunnelId);
+        await this.provisionConnectorToken(tunnelId, token);
         provisioned += 1;
-        const tunnel = await context.cfService.getTunnel(context.accountId, service.tunnelId!);
         if (Array.isArray(tunnel?.connections) && tunnel.connections.length > 0) {
-          const deployment = await prisma.optimizedDeployment.findFirst({
-            where: { serviceId: service.id, userId: service.userId, status: 'WAITING_CONFIRMATION' },
-            orderBy: { createdAt: 'desc' },
-          });
-          const pending = parseJson<any>(deployment?.pendingConfirmationJson, {});
           if (deployment && pending.kind === 'TUNNEL_CONNECTION_REQUIRED') {
             await this.continue(service.userId, deployment.id, 'replace');
           }
@@ -387,7 +400,24 @@ export class OptimizedDeploymentService {
       await this.appendLog(jobId, { step: 'PREFLIGHT', message: '预检查通过，Snapshot 已保存' });
 
       const zoneConfig = await prisma.cloudflareOptimizedZoneConfig.findUnique({ where: { userId_dnsCredentialId_zoneId: { userId: service.userId, dnsCredentialId: service.dnsCredentialId, zoneId: service.zoneId } } });
-      let tunnelId = service.tunnelId || zoneConfig?.tunnelId || undefined;
+      let validZoneConfig = zoneConfig;
+      if (validZoneConfig?.tunnelId) {
+        const configuredTunnel = await context.cfService.getTunnel(context.accountId, validZoneConfig.tunnelId).catch(() => null);
+        if (!configuredTunnel || configuredTunnel.deleted_at) {
+          await this.removeConnectorToken(validZoneConfig.tunnelId);
+          await prisma.cloudflareOptimizedZoneConfig.delete({ where: { id: validZoneConfig.id } }).catch(() => undefined);
+          validZoneConfig = null;
+        }
+      }
+      let tunnelId = service.tunnelId || validZoneConfig?.tunnelId || undefined;
+      if (service.tunnelId && !validZoneConfig?.tunnelId) {
+        const serviceTunnel = await context.cfService.getTunnel(context.accountId, service.tunnelId).catch(() => null);
+        if (!serviceTunnel || serviceTunnel.deleted_at) {
+          await this.removeConnectorToken(service.tunnelId);
+          tunnelId = undefined;
+          await prisma.optimizedService.update({ where: { id: service.id }, data: { tunnelId: null, tunnelName: null, customHostnameId: null } });
+        }
+      }
       let tunnelName = service.tunnelName;
       const managed = parseJson<any>(service.managedResourcesJson, {});
       if (!tunnelId) {
@@ -420,8 +450,8 @@ export class OptimizedDeploymentService {
       }
       const connectorToken = await context.cfService.getTunnelToken(context.accountId, tunnelId).catch(() => '');
       await this.provisionConnectorToken(tunnelId, connectorToken);
-      if (zoneConfig?.tunnelId && zoneConfig.tunnelId !== tunnelId && !confirmed.has('ZONE_TUNNEL_CONFLICT')) {
-        throw new ConfirmationRequiredError('ZONE_TUNNEL_CONFLICT', { existingTunnelId: zoneConfig.tunnelId, requestedTunnelId: tunnelId }, '同一 Zone 已绑定另一个共享 Tunnel');
+      if (validZoneConfig?.tunnelId && validZoneConfig.tunnelId !== tunnelId && !confirmed.has('ZONE_TUNNEL_CONFLICT')) {
+        throw new ConfirmationRequiredError('ZONE_TUNNEL_CONFLICT', { existingTunnelId: validZoneConfig.tunnelId, requestedTunnelId: tunnelId }, '同一 Zone 已绑定另一个共享 Tunnel');
       }
       await prisma.optimizedService.update({ where: { id: service.id }, data: { deploymentStatus: 'TUNNEL_READY', currentStep: 'TUNNEL_READY' } });
       const tunnelService = new TunnelPublicHostnameService(context.cfService);
