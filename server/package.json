@@ -7,6 +7,7 @@
     "dev": "prisma db push --skip-generate && tsx watch src/index.ts",
     "build": "tsc",
     "start": "prisma db push && node dist/index.js",
+    "spike:optimized": "tsx src/scripts/cloudflare-optimized-spike.ts",
     "cert:renew:drill": "tsx src/scripts/certificate-renewal-drill.ts",
     "cert:deploy:migrate:npm-type": "tsx src/scripts/migrate-npm-deploy-target-type.ts",
     "cert:vendor:migrate:foundation": "tsx src/scripts/migrate-vendor-certificate-foundation.ts",
