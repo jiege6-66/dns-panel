@@ -248,6 +248,24 @@ sqlite3 prisma/database.db "SELECT count(*) FROM users; SELECT count(*) FROM dns
 
 > 推荐方式：前后端一体，只需暴露一个端口。
 
+### Docker 开发调试（无需重复构建）
+
+频繁调试时使用独立的 `docker-compose.dev.yml`。它不会使用生产镜像，也不会覆盖宿主机的 `node_modules` 或 `server/database.db`；源码通过 bind mount 挂载，后端 `tsx watch` 和前端 Vite 会自动热更新：
+
+```bash
+docker compose -f docker-compose.dev.yml up
+```
+
+修改 TypeScript、React 或样式文件不需要重新构建。只有修改 `package.json`、锁文件、Docker 基础镜像或 Compose 服务定义时，才需要重新创建对应容器（通常执行 `docker compose -f docker-compose.dev.yml up --force-recreate` 即可；不需要 `docker compose build`）。
+
+停止开发环境：
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+开发数据库位于 Docker 命名卷 `optimized_dev_data`，如需完全清空再显式执行 `docker compose -f docker-compose.dev.yml down -v`。
+
 ## 🏷️ 发版（Tag 自动发布）
 
 项目已提供 GitHub Actions 工作流：当推送 `v*` Tag（例如 `v1.7.0`）时，会自动：

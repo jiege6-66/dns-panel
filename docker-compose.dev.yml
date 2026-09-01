@@ -1,0 +1,44 @@
+# Docker 开发环境：源码挂载 + tsx/Vite 热更新。
+# 与生产 docker-compose.yml、宿主机 node_modules 和 server/database.db 隔离。
+services:
+  server:
+    image: node:22-bookworm-slim
+    working_dir: /app/server
+    environment:
+      NODE_ENV: development
+      PORT: 4001
+      DATABASE_URL: file:/app/data/database.db
+      JWT_SECRET: local-docker-development-jwt-secret
+      JWT_EXPIRES_IN: 7d
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef
+      CORS_ORIGIN: http://localhost:5173
+      OPTIMIZED_DEPLOYMENT_SCHEDULER_INTERVAL_MS: 15000
+      OPTIMIZED_POLL_INTERVAL_MS: 10000
+    volumes:
+      - ./server:/app/server
+      - optimized_server_node_modules_debian:/app/server/node_modules
+      - optimized_dev_data:/app/data
+    command: >-
+      sh -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl ca-certificates >/dev/null && npm install --no-audit --no-fund && npx prisma generate && npm run dev"
+    ports:
+      - "4001:4001"
+
+  client:
+    image: node:22-alpine
+    working_dir: /app/client
+    environment:
+      VITE_API_PROXY_TARGET: http://server:4001
+    volumes:
+      - ./client:/app/client
+      - optimized_client_node_modules:/app/client/node_modules
+    command: >-
+      sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - server
+
+volumes:
+  optimized_server_node_modules_debian:
+  optimized_client_node_modules:
+  optimized_dev_data:
