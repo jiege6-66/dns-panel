@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "prisma db push --skip-generate && tsx watch src/index.ts",
     "build": "tsc",
+    "test": "tsx --test src/services/optimized/*.test.ts src/services/tunnelPublicHostname.test.ts",
     "start": "prisma db push && node dist/index.js",
     "spike:optimized": "tsx src/scripts/cloudflare-optimized-spike.ts",
     "cert:renew:drill": "tsx src/scripts/certificate-renewal-drill.ts",

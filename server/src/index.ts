@@ -25,6 +25,9 @@ import { startCertificateOrderScheduler } from './jobs/certificateOrderScheduler
 import { startCertificateRenewalScheduler } from './jobs/certificateRenewalScheduler';
 import { startVendorCertificateScheduler } from './jobs/vendorCertificateScheduler';
 import { startCertificateDeployScheduler } from './jobs/certificateDeployScheduler';
+import optimizedServicesRoutes from './routes/optimizedServices';
+import optimizedDeploymentsRoutes from './routes/optimizedDeployments';
+import { startOptimizedDeploymentScheduler } from './jobs/optimizedDeploymentScheduler';
 
 // 验证配置
 validateConfig();
@@ -56,6 +59,8 @@ app.use('/api/certificates', certificateRoutes);
 app.use('/api/certificate-deploy', certificateDeployRoutes);
 app.use('/api/vendor-certificates', vendorCertificateRoutes);
 app.use('/api/certificate-aliases', certificateAliasesRoutes);
+app.use('/api/optimized-services', optimizedServicesRoutes);
+app.use('/api/optimized-deployments', optimizedDeploymentsRoutes);
 
 // 静态文件服务 (生产环境)
 // 在 Docker 中，前端构建产物将被复制到 /app/public
@@ -97,6 +102,7 @@ app.listen(config.port, () => {
   startCertificateRenewalScheduler();
   startVendorCertificateScheduler();
   startCertificateDeployScheduler();
+  startOptimizedDeploymentScheduler();
 });
 
 // 优雅关闭

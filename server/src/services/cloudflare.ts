@@ -169,6 +169,53 @@ export class CloudflareService {
   }
 
   /**
+   * Call the REST API with bounded retries for transient Cloudflare failures.
+   * The SDK does not expose all Custom Hostname/Fallback Origin fields, so the
+   * optimized workflow uses this single client-backed transport instead of a
+   * second Cloudflare client implementation.
+   */
+  private async requestApiWithRetry<T = any>(
+    method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
+    path: string,
+    opts?: { query?: Record<string, string | number | boolean | undefined>; body?: any },
+    options: { retries?: number; allow404?: boolean } = {},
+  ): Promise<T | null> {
+    const retries = Math.max(0, Math.min(options.retries ?? 3, 5));
+    let lastError: any;
+    for (let attempt = 0; attempt <= retries; attempt += 1) {
+      try {
+        return await this.requestApiRaw(method, path, opts) as T;
+      } catch (error: any) {
+        lastError = error;
+        const status = Number(error?.status || error?.statusCode || 0);
+        if (status === 404 && options.allow404) return null;
+        if (![408, 429, 500, 502, 503, 504].includes(status) && !error?.code) break;
+        if (attempt >= retries) break;
+        const retryAfterMs = Number(error?.retryAfter || 0) * 1000;
+        await new Promise(resolve => setTimeout(resolve, retryAfterMs || Math.min(250 * 2 ** attempt, 4000)));
+      }
+    }
+
+    const status = Number(lastError?.status || lastError?.statusCode || 0);
+    const errors = Array.isArray(lastError?.errors) ? lastError.errors : [];
+    const firstCode = errors[0]?.code;
+    const rawMessage = String(lastError?.message || 'Cloudflare API 请求失败');
+    let message = rawMessage;
+    if (status === 401) message = 'Cloudflare Token 无效或已过期';
+    else if (status === 403) message = 'Cloudflare 权限不足，请检查 Zone Read、DNS Read/Write、Account Cloudflare Tunnel Read/Write、SSL and Certificates Read/Write 权限';
+    else if (status === 404) message = 'Cloudflare 资源不存在';
+    else if (status === 409) message = 'Cloudflare 资源冲突，请检查现有配置';
+    else if (status === 429) message = 'Cloudflare API 请求过于频繁，请稍后重试';
+    else if (status >= 500 || lastError?.code) message = 'Cloudflare 服务暂时不可用，请稍后重试';
+
+    const err = new Error(message);
+    (err as any).status = status || undefined;
+    (err as any).code = firstCode;
+    (err as any).errors = errors;
+    throw err;
+  }
+
+  /**
    * 验证 Token 有效性
    */
   async verifyToken(): Promise<boolean> {
@@ -576,6 +623,51 @@ export class CloudflareService {
     }
   }
 
+  /** 获取单个 Custom Hostname 的完整状态；hostname 与 SSL 状态保持独立。 */
+  async getCustomHostname(zoneId: string, hostnameId: string): Promise<any | null> {
+    return this.requestApiWithRetry('GET', `/zones/${zoneId}/custom_hostnames/${hostnameId}`, undefined, { allow404: true });
+  }
+
+  /** 使用 TXT 方式创建 Custom Hostname，返回 API 原始验证记录。 */
+  async createCustomHostnameWithTxt(
+    zoneId: string,
+    hostname: string,
+    customOriginServer?: string,
+  ): Promise<any> {
+    const body: Record<string, any> = {
+      hostname: this.normalizeHostname(hostname),
+      ssl: { method: 'txt', type: 'dv' },
+    };
+    if (customOriginServer) body.custom_origin_server = customOriginServer.trim();
+    return this.requestApiWithRetry('POST', `/zones/${zoneId}/custom_hostnames`, { body });
+  }
+
+  /** 返回 hostname/SSL/Fallback 等互相独立的可序列化状态。 */
+  normalizeCustomHostnameStatus(value: any): {
+    id?: string;
+    hostname: string;
+    hostnameStatus: string;
+    sslStatus: string;
+    ownershipVerification?: any;
+    validationRecords: any[];
+    dcvDelegationRecords: any[];
+    errors: any[];
+  } {
+    return {
+      id: typeof value?.id === 'string' ? value.id : undefined,
+      hostname: this.normalizeHostname(value?.hostname),
+      hostnameStatus: String(value?.status || 'unknown'),
+      sslStatus: String(value?.ssl?.status || 'unknown'),
+      ownershipVerification: value?.ownership_verification,
+      validationRecords: Array.isArray(value?.ssl?.validation_records) ? value.ssl.validation_records : [],
+      dcvDelegationRecords: Array.isArray(value?.ssl?.dcv_delegation_records) ? value.ssl.dcv_delegation_records : [],
+      errors: [
+        ...(Array.isArray(value?.verification_errors) ? value.verification_errors : []),
+        ...(Array.isArray(value?.ssl?.validation_errors) ? value.ssl.validation_errors : []),
+      ],
+    };
+  }
+
   async getCustomHostnameByHostname(zoneId: string, hostname: string): Promise<any | null> {
     const target = this.normalizeHostname(hostname);
     if (!target) return null;
@@ -685,6 +777,17 @@ export class CloudflareService {
     }
   }
 
+  /** Fallback Origin 详情，包括 origin、status 和 Cloudflare errors。 */
+  async getFallbackOriginDetails(zoneId: string): Promise<{ origin: string | null; status: string; errors: any[] }> {
+    const result = await this.requestApiWithRetry<any>('GET', `/zones/${zoneId}/custom_hostnames/fallback_origin`, undefined, { allow404: true });
+    if (!result) return { origin: null, status: 'NOT_CONFIGURED', errors: [] };
+    return {
+      origin: typeof result.origin === 'string' ? result.origin : null,
+      status: String(result.status || 'unknown'),
+      errors: Array.isArray(result.errors) ? result.errors : [],
+    };
+  }
+
   /**
    * 更新自定义主机名回退源
    */
@@ -700,6 +803,10 @@ export class CloudflareService {
       (err as any).status = error?.status || error?.statusCode;
       throw err;
     }
+  }
+
+  async deleteFallbackOrigin(zoneId: string): Promise<void> {
+    await this.requestApiWithRetry('DELETE', `/zones/${zoneId}/custom_hostnames/fallback_origin`, undefined, { allow404: true });
   }
 
   /**
