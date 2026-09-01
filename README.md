@@ -11,6 +11,7 @@
 
 - [功能概览](#-功能概览)
 - [Cloudflare Tunnels](#-cloudflare-tunnels)
+- [Cloudflare 优选服务](#-cloudflare-优选服务)
 - [支持的服务商](#-支持的服务商)
 - [技术栈](#-技术栈)
 - [相关文档](#-相关文档)
