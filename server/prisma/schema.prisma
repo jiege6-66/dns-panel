@@ -9,62 +9,62 @@ datasource db {
 }
 
 model User {
-  id                              Int      @id @default(autoincrement())
-  username                        String   @unique
-  email                           String?  @unique
-  password                        String
-  cfApiToken                      String?
-  cfAccountId                     String?
-  twoFactorSecret                 String?
-  twoFactorEnabled                Boolean  @default(false)
-  domainExpiryDisplayMode         String   @default("date")
-  domainExpiryThresholdDays       Int      @default(7)
-  showNonAuthoritativeDomains     Boolean  @default(false)
-  domainExpiryNotifyEnabled       Boolean  @default(false)
-  domainExpiryNotifyWebhookUrl    String?
-  domainExpiryNotifyEmailEnabled  Boolean  @default(false)
-  domainExpiryNotifyEmailTo       String?
-  smtpHost                        String?
-  smtpPort                        Int?
-  smtpSecure                      Boolean?
-  smtpUser                        String?
-  smtpPass                        String?
-  smtpFrom                        String?
-  certificateSettingsJson         String?
-  certificateSettingsSecrets      String?
-  createdAt                       DateTime @default(now())
-  updatedAt                       DateTime @updatedAt
+  id                             Int      @id @default(autoincrement())
+  username                       String   @unique
+  email                          String?  @unique
+  password                       String
+  cfApiToken                     String?
+  cfAccountId                    String?
+  twoFactorSecret                String?
+  twoFactorEnabled               Boolean  @default(false)
+  domainExpiryDisplayMode        String   @default("date")
+  domainExpiryThresholdDays      Int      @default(7)
+  showNonAuthoritativeDomains    Boolean  @default(false)
+  domainExpiryNotifyEnabled      Boolean  @default(false)
+  domainExpiryNotifyWebhookUrl   String?
+  domainExpiryNotifyEmailEnabled Boolean  @default(false)
+  domainExpiryNotifyEmailTo      String?
+  smtpHost                       String?
+  smtpPort                       Int?
+  smtpSecure                     Boolean?
+  smtpUser                       String?
+  smtpPass                       String?
+  smtpFrom                       String?
+  certificateSettingsJson        String?
+  certificateSettingsSecrets     String?
+  createdAt                      DateTime @default(now())
+  updatedAt                      DateTime @updatedAt
 
-  logs                            Log[]
-  dnsCredentials                  DnsCredential[]
-  certificateCredentials          CertificateCredential[]
-  certificateOrders               CertificateOrder[]
-  certificateDeployTargets        CertificateDeployTarget[]
-  vendorCertificateOrders         VendorCertificateOrder[]
-  certificateAliases              CertificateCnameAlias[]
-  cfCredentials                   CfCredential[] @relation("CfCredentials")
-  domainExpiryNotifications       DomainExpiryNotification[]
-  domainExpiryOverrides           DomainExpiryOverride[]
+  logs                      Log[]
+  dnsCredentials            DnsCredential[]
+  certificateCredentials    CertificateCredential[]
+  certificateOrders         CertificateOrder[]
+  certificateDeployTargets  CertificateDeployTarget[]
+  vendorCertificateOrders   VendorCertificateOrder[]
+  certificateAliases        CertificateCnameAlias[]
+  cfCredentials             CfCredential[]             @relation("CfCredentials")
+  domainExpiryNotifications DomainExpiryNotification[]
+  domainExpiryOverrides     DomainExpiryOverride[]
 
   @@map("users")
 }
 
 model DnsCredential {
-  id                              Int      @id @default(autoincrement())
-  userId                          Int
-  user                            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name                            String
-  provider                        String
-  secrets                         String
-  accountId                       String?
-  isDefault                       Boolean  @default(false)
-  createdAt                       DateTime @default(now())
-  updatedAt                       DateTime @updatedAt
-  certificateOrders               CertificateOrder[]
-  legacyVendorCertificateOrders   VendorCertificateOrder[] @relation("LegacyVendorDnsCredential")
-  vendorCredentialOrders          VendorCertificateOrder[] @relation("VendorCredentialOrders")
+  id                                Int                      @id @default(autoincrement())
+  userId                            Int
+  user                              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                              String
+  provider                          String
+  secrets                           String
+  accountId                         String?
+  isDefault                         Boolean                  @default(false)
+  createdAt                         DateTime                 @default(now())
+  updatedAt                         DateTime                 @updatedAt
+  certificateOrders                 CertificateOrder[]
+  legacyVendorCertificateOrders     VendorCertificateOrder[] @relation("LegacyVendorDnsCredential")
+  vendorCredentialOrders            VendorCertificateOrder[] @relation("VendorCredentialOrders")
   validationVendorCertificateOrders VendorCertificateOrder[] @relation("ValidationDnsCredentialOrders")
-  certificateAliases              CertificateCnameAlias[]
+  certificateAliases                CertificateCnameAlias[]
 
   @@index([userId])
   @@index([provider])
@@ -72,9 +72,9 @@ model DnsCredential {
 }
 
 model CertificateCredential {
-  id            Int      @id @default(autoincrement())
+  id            Int                @id @default(autoincrement())
   userId        Int
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
   provider      String
   email         String
@@ -83,9 +83,9 @@ model CertificateCredential {
   eabHmacKey    String?
   accountKeyPem String
   accountUrl    String?
-  isDefault     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  isDefault     Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
   orders        CertificateOrder[]
 
   @@index([userId])
@@ -94,13 +94,13 @@ model CertificateCredential {
 }
 
 model CertificateOrder {
-  id                      Int                   @id @default(autoincrement())
+  id                      Int                    @id @default(autoincrement())
   userId                  Int
-  user                    User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                    User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   certificateCredentialId Int
-  certificateCredential   CertificateCredential @relation(fields: [certificateCredentialId], references: [id], onDelete: Restrict)
+  certificateCredential   CertificateCredential  @relation(fields: [certificateCredentialId], references: [id], onDelete: Restrict)
   dnsCredentialId         Int
-  dnsCredential           DnsCredential         @relation(fields: [dnsCredentialId], references: [id], onDelete: Restrict)
+  dnsCredential           DnsCredential          @relation(fields: [dnsCredentialId], references: [id], onDelete: Restrict)
   primaryDomain           String
   domainsJson             String
   status                  String
@@ -110,12 +110,12 @@ model CertificateOrder {
   fullchainPem            String?
   issuedAt                DateTime?
   expiresAt               DateTime?
-  autoRenew               Boolean               @default(true)
-  retryCount              Int                   @default(0)
+  autoRenew               Boolean                @default(true)
+  retryCount              Int                    @default(0)
   nextRetryAt             DateTime?
   lastError               String?
-  createdAt               DateTime              @default(now())
-  updatedAt               DateTime              @updatedAt
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
   deployJobs              CertificateDeployJob[] @relation("AcmeDeployJobs")
 
   @@index([userId])
@@ -172,7 +172,7 @@ model CertificateDeployJob {
 }
 
 model CertificateDeployRun {
-  id         Int                  @id @default(autoincrement())
+  id          Int                  @id @default(autoincrement())
   jobId       Int
   job         CertificateDeployJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
   event       String
@@ -191,16 +191,16 @@ model CertificateDeployRun {
 }
 
 model VendorCertificateOrder {
-  id                        Int                   @id @default(autoincrement())
+  id                        Int                    @id @default(autoincrement())
   userId                    Int
-  user                      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   provider                  String
   dnsCredentialId           Int?
-  legacyDnsCredential       DnsCredential?        @relation("LegacyVendorDnsCredential", fields: [dnsCredentialId], references: [id], onDelete: Restrict)
+  legacyDnsCredential       DnsCredential?         @relation("LegacyVendorDnsCredential", fields: [dnsCredentialId], references: [id], onDelete: Restrict)
   vendorCredentialId        Int?
-  vendorCredential          DnsCredential?        @relation("VendorCredentialOrders", fields: [vendorCredentialId], references: [id], onDelete: Restrict)
+  vendorCredential          DnsCredential?         @relation("VendorCredentialOrders", fields: [vendorCredentialId], references: [id], onDelete: Restrict)
   validationDnsCredentialId Int?
-  validationDnsCredential   DnsCredential?        @relation("ValidationDnsCredentialOrders", fields: [validationDnsCredentialId], references: [id], onDelete: Restrict)
+  validationDnsCredential   DnsCredential?         @relation("ValidationDnsCredentialOrders", fields: [validationDnsCredentialId], references: [id], onDelete: Restrict)
   primaryDomain             String
   domainsJson               String
   contactProfileJson        String?
@@ -215,8 +215,8 @@ model VendorCertificateOrder {
   expiresAt                 DateTime?
   lastSyncAt                DateTime?
   lastError                 String?
-  createdAt                 DateTime              @default(now())
-  updatedAt                 DateTime              @updatedAt
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
   deployJobs                CertificateDeployJob[] @relation("VendorDeployJobs")
 
   @@index([userId])
@@ -230,20 +230,20 @@ model VendorCertificateOrder {
 }
 
 model CertificateCnameAlias {
-  id            Int           @id @default(autoincrement())
-  userId        Int
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  domain        String
+  id              Int           @id @default(autoincrement())
+  userId          Int
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  domain          String
   dnsCredentialId Int
-  dnsCredential DnsCredential @relation(fields: [dnsCredentialId], references: [id], onDelete: Restrict)
-  zoneName      String
-  rr            String
-  targetFqdn    String
-  status        String
-  lastCheckedAt DateTime?
-  lastError     String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  dnsCredential   DnsCredential @relation(fields: [dnsCredentialId], references: [id], onDelete: Restrict)
+  zoneName        String
+  rr              String
+  targetFqdn      String
+  status          String
+  lastCheckedAt   DateTime?
+  lastError       String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@unique([userId, domain])
   @@unique([dnsCredentialId, rr])
@@ -253,35 +253,35 @@ model CertificateCnameAlias {
 }
 
 model CfCredential {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  user        User     @relation("CfCredentials", fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  apiToken    String
-  accountId   String?
-  isDefault   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation("CfCredentials", fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  apiToken  String
+  accountId String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@map("cf_credentials")
 }
 
 model Log {
-  id            Int      @id @default(autoincrement())
-  userId        Int
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  timestamp     DateTime @default(now())
-  action        String
-  resourceType  String
-  domain        String?
-  recordName    String?
-  recordType    String?
-  oldValue      String?
-  newValue      String?
-  status        String
-  errorMessage  String?
-  ipAddress     String?
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timestamp    DateTime @default(now())
+  action       String
+  resourceType String
+  domain       String?
+  recordName   String?
+  recordType   String?
+  oldValue     String?
+  newValue     String?
+  status       String
+  errorMessage String?
+  ipAddress    String?
 
   @@index([userId])
   @@index([timestamp])
@@ -303,9 +303,9 @@ model Cache {
 }
 
 model DomainExpiryNotification {
-  id             Int      @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   userId         Int
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   domain         String
   expiresAt      DateTime
   thresholdDays  Int
@@ -313,7 +313,7 @@ model DomainExpiryNotification {
   status         String
   payload        String?
   errorMessage   String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
   lastNotifiedAt DateTime?
 
   @@unique([userId, domain, expiresAt, thresholdDays, channel])
