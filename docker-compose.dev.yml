@@ -14,14 +14,27 @@ services:
       CORS_ORIGIN: http://localhost:5173
       OPTIMIZED_DEPLOYMENT_SCHEDULER_INTERVAL_MS: 15000
       OPTIMIZED_POLL_INTERVAL_MS: 10000
+      OPTIMIZED_TUNNEL_TOKEN_DIR: /app/tunnel-tokens
     volumes:
       - ./server:/app/server
       - optimized_server_node_modules_debian:/app/server/node_modules
       - optimized_dev_data:/app/data
+      - optimized_tunnel_tokens:/app/tunnel-tokens
     command: >-
       sh -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends openssl ca-certificates >/dev/null && npm install --no-audit --no-fund && npx prisma generate && npm run dev"
     ports:
       - "4001:4001"
+
+  # 自动连接同机的 Cloudflare Tunnel。Token 只存在于 Docker 命名卷，
+  # 不写入仓库、SQLite 或容器环境变量。后端会在创建/复用 Tunnel 时写入。
+  cloudflared:
+    image: dns-panel-cloudflared-watcher:dev
+    build:
+      context: ./docker/cloudflared-watcher
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - optimized_tunnel_tokens:/tokens:ro
 
   client:
     image: node:22-alpine
@@ -42,3 +55,4 @@ volumes:
   optimized_server_node_modules_debian:
   optimized_client_node_modules:
   optimized_dev_data:
+  optimized_tunnel_tokens:

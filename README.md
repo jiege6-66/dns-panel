@@ -256,7 +256,7 @@ sqlite3 prisma/database.db "SELECT count(*) FROM users; SELECT count(*) FROM dns
 docker compose -f docker-compose.dev.yml up
 ```
 
-修改 TypeScript、React 或样式文件不需要重新构建。只有修改 `package.json`、锁文件、Docker 基础镜像或 Compose 服务定义时，才需要重新创建对应容器（通常执行 `docker compose -f docker-compose.dev.yml up --force-recreate` 即可；不需要 `docker compose build`）。
+修改 TypeScript、React 或样式文件不需要重新构建。开发 Compose 还包含自动运行的 `cloudflared` sidecar：后端创建/复用 Tunnel 后将 Token 写入 Docker 私有卷，sidecar 自动连接；Token 不进入 SQLite、日志或 Git。只有修改 `package.json`、锁文件、Docker 基础镜像或 Compose 服务定义时，才需要重新创建对应容器（通常执行 `docker compose -f docker-compose.dev.yml up --force-recreate` 即可；不需要 `docker compose build`）。
 
 停止开发环境：
 

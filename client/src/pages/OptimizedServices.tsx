@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert, Box, Button, Card, CardActions, CardContent, Chip, CircularProgress, Dialog, DialogActions,
@@ -80,6 +81,7 @@ function CreateOptimizedServiceDialog({ open, onClose, onSaved, initial }: { ope
 }
 
 function OptimizedServiceCard({ service, onRefresh, onEdit }: { service: OptimizedService; onRefresh: () => void; onEdit: () => void }) {
+  const navigate = useNavigate();
   const [alert, setAlert] = useState<string>('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const deployments = useQuery({ queryKey: ['optimized-deployments', service.id], queryFn: () => getOptimizedDeployments(service.id), enabled: service.deploymentStatus !== 'DRAFT', refetchInterval: 3_000 });
@@ -88,13 +90,16 @@ function OptimizedServiceCard({ service, onRefresh, onEdit }: { service: Optimiz
   const latest = deploymentList[0];
   const pendingConfirmation = deploymentList.find(item => item.status === 'WAITING_CONFIRMATION');
   const canOperate = service.deploymentStatus === 'ACTIVE';
+  let pendingDetails: any = {};
+  try { pendingDetails = pendingConfirmation?.pendingConfirmationJson ? JSON.parse(pendingConfirmation.pendingConfirmationJson) : {}; } catch { pendingDetails = {}; }
+  const connectorRequired = pendingDetails.kind === 'TUNNEL_CONNECTION_REQUIRED';
   return <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
     <CardContent sx={{ flexGrow: 1 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}><Box><Typography variant="h6">{service.name}</Typography><Typography variant="body2" color="text.secondary">{service.hostname}</Typography></Box><Chip size="small" label={statusLabel[service.deploymentStatus] || service.deploymentStatus} color={service.deploymentStatus === 'ACTIVE' ? 'success' : service.deploymentStatus.includes('FAILED') || service.deploymentStatus === 'FAILED' ? 'error' : 'default'} /></Stack>
       <Divider sx={{ my: 2 }} />
       <Stack spacing={0.75} sx={{ fontSize: 14 }}><Typography variant="body2"><b>DNS：</b>{service.mode === 'PREFERRED' ? 'DNS only → preferredTarget' : '橙云 Tunnel CNAME'}</Typography><Typography variant="body2"><b>Tunnel：</b>{service.tunnelName || service.tunnelId || '部署时创建'}</Typography><Typography variant="body2"><b>Custom Hostname：</b>{service.customHostnameId || '未创建'}</Typography><Typography variant="body2"><b>SSL：</b>{service.currentStep === 'WAITING_SSL_ACTIVE' ? '等待 active' : service.deploymentStatus === 'ACTIVE' ? 'active' : '—'}</Typography><Typography variant="body2"><b>HTTPS：</b>{service.healthStatus === 'HEALTHY' ? '健康' : service.healthStatus === 'UNHEALTHY' ? '失败' : '未检查'}</Typography><Typography variant="body2"><b>更新时间：</b>{formatDateTime(service.updatedAt)}</Typography></Stack>
       {service.lastError && <Alert severity="error" sx={{ mt: 2 }}>{service.lastError}</Alert>}
-      {pendingConfirmation?.status === 'WAITING_CONFIRMATION' && <Alert severity="warning" sx={{ mt: 2 }}>任务需要人工确认：{(() => { try { return pendingConfirmation.pendingConfirmationJson ? JSON.stringify(JSON.parse(pendingConfirmation.pendingConfirmationJson)) : '存在动态配置冲突'; } catch { return '存在动态配置冲突'; } })()}<Stack direction="row" spacing={1} sx={{ mt: 1 }}><Button size="small" variant="contained" onClick={() => action(() => continueOptimizedDeployment(pendingConfirmation.id, 'replace'))}>备份并替换</Button><Button size="small" onClick={() => action(() => continueOptimizedDeployment(pendingConfirmation.id, 'cancel'))}>取消</Button></Stack></Alert>}
+      {pendingConfirmation?.status === 'WAITING_CONFIRMATION' && <Alert severity="warning" sx={{ mt: 2 }}>{connectorRequired ? <><Typography variant="body2" fontWeight={700}>Connector 正在自动连接</Typography><Typography variant="body2" sx={{ mt: 0.5 }}>Docker sidecar 会自动启动 cloudflared，连接成功后任务自动继续，无需复制 Token。</Typography></> : <><Typography variant="body2" fontWeight={700}>任务需要人工确认</Typography><Typography variant="body2" sx={{ mt: 0.5 }}>{pendingDetails.message || '存在 DNS、Ingress 或验证记录冲突'}</Typography></>}<Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap' }}>{connectorRequired && <Button size="small" variant="outlined" onClick={() => navigate(`/tunnels?credentialId=${service.dnsCredentialId}`)}>查看 Tunnel</Button>}<Button size="small" variant="contained" onClick={() => action(() => continueOptimizedDeployment(pendingConfirmation.id, 'replace'))}>{connectorRequired ? '立即重新检查' : '备份并替换'}</Button>{!connectorRequired && <Button size="small" onClick={() => action(() => continueOptimizedDeployment(pendingConfirmation.id, 'cancel'))}>取消</Button>}</Stack></Alert>}
       {alert && <Alert severity="error" sx={{ mt: 2 }} onClose={() => setAlert('')}>{alert}</Alert>}
     </CardContent>
     <CardActions sx={{ flexWrap: 'wrap', gap: 0.5 }}><Button size="small" onClick={onEdit}>编辑</Button><Button size="small" startIcon={<DeployIcon />} onClick={() => action(() => deployOptimizedService(service.id))} disabled={['PREFLIGHT', 'PREPARING_TUNNEL', 'TUNNEL_READY', 'WAITING_FALLBACK', 'WAITING_SSL_ACTIVE', 'SWITCHING_DNS', 'VERIFYING', 'WAITING_CONFIRMATION', 'ROLLING_BACK'].includes(service.deploymentStatus)}>部署</Button><Button size="small" startIcon={<HealthIcon />} onClick={() => action(() => healthCheckOptimizedService(service.id))} disabled={!canOperate}>健康检查</Button><Button size="small" onClick={() => action(() => switchOptimizedPreferred(service.id))} disabled={!canOperate}>切换优选</Button><Button size="small" onClick={() => action(() => switchOptimizedDefault(service.id))} disabled={!canOperate}>恢复默认</Button>{latest && <Button size="small" color="warning" startIcon={<RestoreIcon />} onClick={() => action(() => rollbackOptimizedDeployment(latest.id))}>回滚</Button>}<Button size="small" color="error" onClick={() => setConfirmOpen(true)}>移除</Button></CardActions>

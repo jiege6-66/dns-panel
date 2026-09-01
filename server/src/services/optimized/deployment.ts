@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { chmod, mkdir, writeFile } from 'fs/promises';
+import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { CloudflareService } from '../cloudflare';
 import { OptimizedCredentialService } from './credential';
@@ -29,6 +31,15 @@ export class OptimizedDeploymentService {
   private readonly credentials = new OptimizedCredentialService(prisma);
   private readonly rollback = new OptimizedRollbackService(prisma);
   private readonly health = new OptimizedHealthService();
+
+  private async provisionConnectorToken(tunnelId: string, token: string): Promise<void> {
+    const directory = String(process.env.OPTIMIZED_TUNNEL_TOKEN_DIR || '').trim();
+    if (!directory || !token) return;
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const target = path.join(directory, `${tunnelId}.token`);
+    await writeFile(target, `${token.trim()}\n`, { encoding: 'utf8', mode: 0o600 });
+    await chmod(target, 0o600);
+  }
 
   async list(userId: number): Promise<any[]> {
     return prisma.optimizedService.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } });
@@ -251,6 +262,37 @@ export class OptimizedDeploymentService {
     return running.length;
   }
 
+  async provisionPendingConnectors(): Promise<number> {
+    if (!String(process.env.OPTIMIZED_TUNNEL_TOKEN_DIR || '').trim()) return 0;
+    const services = await prisma.optimizedService.findMany({
+      where: { deploymentStatus: 'WAITING_CONFIRMATION', tunnelId: { not: null } },
+    });
+    let provisioned = 0;
+    for (const service of services) {
+      try {
+        const context = await this.credentials.getCloudflareContext(service.userId, service.dnsCredentialId);
+        const token = await context.cfService.getTunnelToken(context.accountId, service.tunnelId!);
+        await this.provisionConnectorToken(service.tunnelId!, token);
+        provisioned += 1;
+        const tunnel = await context.cfService.getTunnel(context.accountId, service.tunnelId!);
+        if (Array.isArray(tunnel?.connections) && tunnel.connections.length > 0) {
+          const deployment = await prisma.optimizedDeployment.findFirst({
+            where: { serviceId: service.id, userId: service.userId, status: 'WAITING_CONFIRMATION' },
+            orderBy: { createdAt: 'desc' },
+          });
+          const pending = parseJson<any>(deployment?.pendingConfirmationJson, {});
+          if (deployment && pending.kind === 'TUNNEL_CONNECTION_REQUIRED') {
+            await this.continue(service.userId, deployment.id, 'replace');
+          }
+        }
+      } catch {
+        // Keep the task waiting. The next scheduler tick retries without
+        // exposing the token or turning a transient API error into job failure.
+      }
+    }
+    return provisioned;
+  }
+
   private validationRecords(custom: any): Array<{ type: 'TXT' | 'CNAME'; name: string; content: string }> {
     const records: Array<{ type: 'TXT' | 'CNAME'; name: string; content: string }> = [];
     const ownership = custom?.ownership_verification;
@@ -364,14 +406,20 @@ export class OptimizedDeploymentService {
             { service: 'http_status:404' },
           ],
         });
+        const token = await context.cfService.getTunnelToken(context.accountId, tunnelId).catch(() => '');
+        await this.provisionConnectorToken(tunnelId, token);
         await prisma.optimizedDeployment.update({ where: { id: jobId }, data: { status: 'WAITING_CONFIRMATION', currentStep: 'WAITING_CONFIRMATION', pendingConfirmationJson: safeJson({ kind: 'TUNNEL_CONNECTION_REQUIRED', tunnelId, message: '请先启动新 Tunnel Connector，再继续部署' }) } });
-        await prisma.optimizedService.update({ where: { id: service.id }, data: { deploymentStatus: 'WAITING_CONFIRMATION', currentStep: 'WAITING_CONFIRMATION', lastError: '请先启动新 Tunnel Connector，再继续部署' } });
+        await prisma.optimizedService.update({ where: { id: service.id }, data: { deploymentStatus: 'WAITING_CONFIRMATION', currentStep: 'WAITING_CONFIRMATION', lastError: 'Connector 正在自动启动，连接成功后请重新检查' } });
         return;
       }
       const selectedTunnel = await context.cfService.getTunnel(context.accountId, tunnelId).catch(() => null);
       if (!selectedTunnel || !Array.isArray(selectedTunnel.connections) || selectedTunnel.connections.length === 0) {
-        throw new ConfirmationRequiredError('TUNNEL_CONNECTION_REQUIRED', { tunnelId, message: 'Tunnel 尚未连接，请启动 cloudflared Connector 后再继续' }, 'Tunnel 尚未连接');
+        const token = await context.cfService.getTunnelToken(context.accountId, tunnelId).catch(() => '');
+        await this.provisionConnectorToken(tunnelId, token);
+        throw new ConfirmationRequiredError('TUNNEL_CONNECTION_REQUIRED', { tunnelId, message: 'Connector 正在自动启动；连接成功后点击“重新检查连接”继续' }, 'Tunnel 尚未连接');
       }
+      const connectorToken = await context.cfService.getTunnelToken(context.accountId, tunnelId).catch(() => '');
+      await this.provisionConnectorToken(tunnelId, connectorToken);
       if (zoneConfig?.tunnelId && zoneConfig.tunnelId !== tunnelId && !confirmed.has('ZONE_TUNNEL_CONFLICT')) {
         throw new ConfirmationRequiredError('ZONE_TUNNEL_CONFLICT', { existingTunnelId: zoneConfig.tunnelId, requestedTunnelId: tunnelId }, '同一 Zone 已绑定另一个共享 Tunnel');
       }
